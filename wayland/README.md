@@ -1,0 +1,1 @@
+Based on the [Programming Wayland Clients](https://jan.newmarch.name/Wayland/index.html) tutorial, by Jan Newmarch.
