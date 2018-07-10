@@ -5,13 +5,15 @@
 #include <wayland-egl.h>
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
+#include "xdg-shell-unstable-v6-client-protocol.h"
 
 static struct {
     struct wl_display *display;
     struct wl_compositor *compositor;
     struct wl_surface *surface;
-    struct wl_shell *shell;
-    struct wl_shell_surface *shell_surface;
+    struct zxdg_shell_v6 *xdg_shell;
+    struct zxdg_surface_v6 *xdg_surface;
+    struct zxdg_toplevel_v6 *xdg_toplevel;
     struct wl_region *region;
     struct wl_egl_window *egl_window;
 } wl_data = {0};
@@ -26,13 +28,24 @@ static struct {
 static const int WIDTH = 1280;
 static const int HEIGHT = 720;
 
+static void xdg_shell_ping(void *data, struct zxdg_shell_v6* shell, uint32_t serial)
+{
+    zxdg_shell_v6_pong(shell, serial);
+}
+
+static const struct zxdg_shell_v6_listener xdg_shell_listener = {
+   xdg_shell_ping
+};
+
 static void global_registry_handler(void *d, struct wl_registry *registry, uint32_t id, const char *interface, uint32_t version)
 {
     printf("Got a registry event for %s, id = %d\n", interface, id);
     if (!strcmp(interface, "wl_compositor"))
         wl_data.compositor = wl_registry_bind(registry, id, &wl_compositor_interface, version);
-    else if (!strcmp(interface, "wl_shell"))
-        wl_data.shell = wl_registry_bind(registry, id, &wl_shell_interface, version);
+    else if (!strcmp(interface, "zxdg_shell_v6")) {
+        wl_data.xdg_shell = wl_registry_bind(registry, id, &zxdg_shell_v6_interface, version);
+        zxdg_shell_v6_add_listener(wl_data.xdg_shell, &xdg_shell_listener, 0);
+    }
 }
 
 static void global_registry_remover(void *d, struct wl_registry *registry, uint32_t id)
@@ -70,6 +83,30 @@ static const struct wl_shell_surface_listener shell_surface_listener = {
 	handle_popup_done
 };
 
+static void xdg_surface_configure(void* data, struct zxdg_surface_v6* surface, uint32_t serial)
+{
+    zxdg_surface_v6_ack_configure(surface, serial);
+}
+
+static const struct zxdg_surface_v6_listener xdg_surface_listener = {
+    xdg_surface_configure
+};
+
+static void xdg_toplevel_configure(void* data, struct zxdg_toplevel_v6* toplevel, int32_t width, int32_t height, struct wl_array* states)
+{
+    // TODO
+}
+
+static void xdg_toplevel_close(void* data, struct zxdg_toplevel_v6* xdg_toplevel)
+{
+
+}
+
+static const struct zxdg_toplevel_v6_listener xdg_toplevel_listener = {
+    xdg_toplevel_configure,
+    xdg_toplevel_close
+};
+
 static void init_wayland()
 {
     // 1 - connect to display
@@ -104,19 +141,21 @@ static void init_wayland()
     }
     printf("Surface created!\n");
 
-    // 6 - create a shell surface
-    wl_data.shell_surface = wl_shell_get_shell_surface(wl_data.shell, wl_data.surface);
-    if (!wl_data.shell_surface) {
-        fprintf(stderr, "Can't create shell surface :/\n");
-        exit(1);
+    // 6 - create a xdg shell surface
+    wl_data.xdg_surface = zxdg_shell_v6_get_xdg_surface(wl_data.xdg_shell, wl_data.surface);
+    if (!wl_data.xdg_surface) {
+        fprintf(stderr, "Can't create xdg shell surface :/\n");
+        return;
     }
-    printf("Shell surface created!\n");
+    printf("XDG Shell surface created!\n");
 
-    // 7 - set shell surface to top level
-    wl_shell_surface_set_toplevel(wl_data.shell_surface);
+    zxdg_surface_v6_add_listener(wl_data.xdg_surface, &xdg_surface_listener, 0);
 
-    // 8 - add listener for shell surface
-    wl_shell_surface_add_listener(wl_data.shell_surface, &shell_surface_listener, 0);
+    wl_data.xdg_toplevel = zxdg_surface_v6_get_toplevel(wl_data.xdg_surface);
+
+    zxdg_toplevel_v6_add_listener(wl_data.xdg_toplevel, &xdg_toplevel_listener, 0);
+    zxdg_toplevel_v6_set_title(wl_data.xdg_toplevel, "WaylandEGL");
+    wl_surface_commit(wl_data.surface);
 }
 
 static void init_egl()
