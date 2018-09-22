@@ -274,7 +274,6 @@ static void paint_pixels(int ht)
         break;
     }
 
-    printf("Painting pixels!\n");
     for (n = 0; n < WIDTH * ht; ++n)
         *pixel++ = pixel_value;
 
